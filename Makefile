@@ -6,6 +6,7 @@ VPATH += src/
 PROJ_OBJ += app_main.o
 # PROJ_OBJ += uart_dma_pulp.o
 INCLUDES += -Iinc
+# CFLAGS += -Wno-unused-variable # unused variable treated as warning and not error
 
 CRAZYFLIE_BASE = ../crazyflie-firmware/
 
