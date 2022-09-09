@@ -194,7 +194,7 @@ void spin_in_place(float angle, float time){
         new_yaw = (i*r_steps) + current_yaw;
     	DEBUG_PRINT("%f\n",(double)new_yaw);
 		headToPosition(pos.x, pos.y, pos.z, new_yaw);
-		vTaskDelay(steptime);
+		vTaskDelay(M2T(steptime));
     }
 }
 

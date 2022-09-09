@@ -28,5 +28,5 @@
 
 // Manuevers' Parameters
 #define FINAL_LANDING_HEIGHT  0.07f // [m] --> the drone drops at 0.07m of height
-#define SPIN_TIME             4000.0 // [ms]
+#define SPIN_TIME             1500.0 // [ms]
 #define SPIN_ANGLE 	          180.0  // [deg]
