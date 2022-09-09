@@ -38,14 +38,21 @@
 #include <math.h>
 #include "config_main.h"
 
+/* --------------- DEFINES --------------- */
+#define PI 3.1415926f
+
 
 /* --------------- GUI PARAMETERS --------------- */
 // Global variables for the parameters
 float forward_vel = FORWARD_VELOCITY;
 float flying_height = TARGET_H;
+float spin_time 	= SPIN_TIME; 	//ms
+float spin_angle 	= SPIN_ANGLE; 	// deg
 
-// My parameters for enabling/disabling some parts ofss code. 1=Active, 0=Non active
+// My parameters for enabling/disabling some parts of code. 1=Active, 0=Non active
 uint8_t debug = 1; 		// activate debug prints
+uint8_t circle = 0; 	
+uint8_t spin = 0; 	
 
 // START / STOP mission parameter
 uint8_t fly = 0; 		// Takeoff/landing command (GUI parameter)
@@ -120,16 +127,18 @@ void takeoff(float height)
 	}
 }
 
+
 void land(void)
 {
 	point_t pos;
 	memset(&pos, 0, sizeof(pos));
 	estimatorKalmanGetEstimatedPos(&pos);
 
-	float height = pos.z;
-	for(int i=(int)100*height; i>5; i--)
-	{
-		headToPosition(pos.x, pos.y, (float)i / 100.0f, 0);
+    float height = pos.z;
+    float current_yaw = logGetFloat(logGetVarId("stateEstimate", "yaw"));
+	
+    for(int i=(int)100*height; i>100*FINAL_LANDING_HEIGHT; i--) {
+		headToPosition(pos.x, pos.y, (float)i / 100.0f, current_yaw);
 		vTaskDelay(20);
 	}
 	vTaskDelay(200);
@@ -143,50 +152,108 @@ void land(void)
 // 	return output;
 // }
 
+void flyCircle(float radius, float velocity){
+    
+	float distance = 2.0f*PI*radius;
+    uint16_t steps = distance/velocity*1000/100; //one step is 100ms
+
+	point_t pos;
+	memset(&pos, 0, sizeof(pos));
+	estimatorKalmanGetEstimatedPos(&pos);
+
+    for (int i = 0; i < steps; i++) {
+        float a = M_PI + i*2*M_PI/steps + 4;
+        float x = (float)cos(a)*radius + radius + pos.x;
+        float y = (float)sin(a)*radius + pos.y;
+        headToPosition(x, y, pos.z, 0);
+        vTaskDelay(100);
+    }
+}
+
+void spin_in_place(float angle, float time){
+	/*
+	angle [deg]: given the current orientation, spin by "angle" degrees in place;
+	time   [ms]: how much time to perform the entire manuever --> impacts the spinning speed;
+	*/
+
+    float current_yaw;					// fetch current yaw self estimation
+    float steptime = 10; 				//ms
+    float t_steps = (time/steptime); 	// angle steps
+    float r_steps = (angle/t_steps); 	// time steps
+	float new_yaw;						// new yaw given to the controller. This parameter is updated by the for loop
+
+	// access self estimation
+	point_t pos;
+	memset(&pos, 0, sizeof(pos));
+	estimatorKalmanGetEstimatedPos(&pos);
+	current_yaw = logGetFloat(logGetVarId("stateEstimate", "yaw"));
+    DEBUG_PRINT("%f\n",(double)current_yaw);
+
+	// perform manuever
+    for (int i = 0; i <= t_steps; i++) {
+        new_yaw = (i*r_steps) + current_yaw;
+    	DEBUG_PRINT("%f\n",(double)new_yaw);
+		headToPosition(pos.x, pos.y, pos.z, new_yaw);
+		vTaskDelay(steptime);
+    }
+}
+
 void appMain()
 {
 	DEBUG_PRINT("Dronet v2 started! \n");
 	systemWaitStart();
 	vTaskDelay(1000);
-	/* ------------------------- NOT FLYING ------------------------- */
-
-	while(!fly)
-	{
-		if (debug==1) DEBUG_PRINT("Waiting start \n");			
-		vTaskDelay(100);
-	}
-
-	/* ------------------------- TAKING OFF ------------------------- */
-
-	// reset the estimator before taking off	
-	estimatorKalmanInit();  
-	// TAKE OFF
-	takeoff(flying_height);	
 
 	/* ------------------------ Flight Loop ------------------------ */
 
 	while(1) {
-		vTaskDelay(5);
-		if (fly==0 && landed==0)//land
+		vTaskDelay(10);
+
+		// landed, waiting to start
+		if (fly==0 && landed==1) 
+		{
+			DEBUG_PRINT("Waiting start \n");			
+			vTaskDelay(100);
+		}	
+
+
+		//land
+		if (fly==0 && landed==0) 
 		{
 			land();
 			landed=1;
 		}	
-		if (fly==1 && landed==1) //start flying again
+
+
+		//start flying again
+		if (fly==1 && landed==1) 
 		{
 			estimatorKalmanInit();  
 			takeoff(flying_height);				
 			landed=0;
-		}			
-		if (debug==1) DEBUG_PRINT("flying\n");			
+		}
 
-		// Give setpoint to the controller
-		if (fly==1){
+
+		// flight loop
+		if (fly==1){ 
+			if (debug==1) DEBUG_PRINT("flying\n");			
+			// Give setpoint to the controller
 			setp_dronet = create_setpoint(forward_vel, flying_height, 0.0);
 			commanderSetSetpoint(&setp_dronet, 3);
 		}
-		
-		vTaskDelay(30);
+
+
+		if (fly==1 && circle==1){
+			flyCircle(0.5, 0.5);	
+		}
+
+
+		if (fly==1 && spin==1){
+    		DEBUG_PRINT("\n\nSPIN IN PLACE!\n");
+			spin_in_place(spin_angle, spin_time);
+			spin=0;
+		}
+
 	}
 }
 
@@ -204,12 +271,16 @@ PARAM_GROUP_STOP(DRONET_PARAM)
 // Activate - deactivate functionalities: 0=Non-active, 1=active
 PARAM_GROUP_START(FUNCTIONALITIES)
 	PARAM_ADD(PARAM_UINT8, debug, &debug) // debug prints
+	PARAM_ADD(PARAM_UINT8, circle, &circle) // debug prints
+	PARAM_ADD(PARAM_UINT8, spin, &spin) // debug prints
 PARAM_GROUP_STOP(DRONET_SETTINGS)
 
 // Filters' parameters
 PARAM_GROUP_START(DRONET_PARAMS)
 	PARAM_ADD(PARAM_FLOAT, velocity, &forward_vel)
 	PARAM_ADD(PARAM_FLOAT, height, &flying_height)
+	PARAM_ADD(PARAM_FLOAT, t_spin, &spin_time)
+	PARAM_ADD(PARAM_FLOAT, spin_ang, &spin_angle)
 PARAM_GROUP_STOP(DRONET_SETTINGS)
 
 
