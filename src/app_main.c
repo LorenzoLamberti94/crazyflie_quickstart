@@ -21,10 +21,16 @@
  Date:    18.02.2022                                                           
 -------------------------------------------------------------------------------*/
 
+// TODO:
+// [] 
+
+// standard
 #include <string.h>
 #include <stdint.h>
 #include <stdbool.h>
-
+#include <stdlib.h> // for rand()
+#include <math.h>
+// CF
 #include "app.h"
 #include "FreeRTOS.h"
 #include "system.h"
@@ -35,7 +41,7 @@
 #include "commander.h"
 #include "log.h"
 #include "param.h"
-#include <math.h>
+// my headers
 #include "config_main.h"
 
 /* --------------- DEFINES --------------- */
@@ -43,69 +49,96 @@
 
 
 /* --------------- GUI PARAMETERS --------------- */
-// Global variables for the parameters
-float forward_vel = FORWARD_VELOCITY;
-float flying_height = TARGET_H;
-float spin_time 	= SPIN_TIME; 	//ms
-float spin_angle 	= SPIN_ANGLE; 	// deg
 
-// My parameters for enabling/disabling some parts of code. 1=Active, 0=Non active
-uint8_t debug = 1; 		// activate debug prints
-uint8_t circle = 0; 	
-uint8_t spin = 0; 	
+// ---- My parameters for enabling/disabling some parts of code. 
+// 		1=Active, 0=Non active
 
-// START / STOP mission parameter
 uint8_t fly = 0; 		// Takeoff/landing command (GUI parameter)
-uint8_t landed = 0; 	// Flag for indicating whether the drone landed
+
+// Global variables for the parameters
+float forward_vel 	= FORWARD_VELOCITY;
+float flying_height = TARGET_H;
+
+// Manouver: Spin -- parameters
+float spin_time 		= SPIN_TIME; 			// ms
+float spin_angle 		= SPIN_ANGLE; 			// deg
+float max_rand_angle 	= RANDOM_SPIN_ANGLE; 	// deg
+
+// Demo: Manouvers -- 1=Active, 0=Non active
+uint8_t circle = 0; 	
+uint8_t spin_drone = 0; 	
+
+// debug
+uint8_t debug = 1; 		// activate debug prints
+
 
 /* --------------- GLOBAL VARIABLES --------------- */
 
-setpoint_t setp_dronet;
+// ---- Flags
+uint8_t landed = 0; 	// Flag for indicating whether the drone landed
 
 /* --------------- FUNCTION DEFINITION --------------- */ 
 void land(void);
 void takeoff(float height);
+void headToVelocity(float x_vel, float y_vel, float z_pos, float yaw_rate);
 void headToPosition(float x, float y, float z, float yaw);
-static setpoint_t create_setpoint(float x_vel, float z, float yaw_rate);
+setpoint_t create_velocity_setpoint(float x_vel, float y_vel, float z_pos, float yaw_rate);
+setpoint_t create_position_setpoint(float x, float y, float z, float yaw);
 // float low_pass_filtering(float data_new, float data_old, float alpha);
 
-/* --------------- FUNCTIONS --------------- */ 
-// Fly forward functions
-static setpoint_t create_setpoint(float x_vel, float z, float yaw_rate)
-{
-	setpoint_t setpoint;	
-	memset(&setpoint, 0, sizeof(setpoint_t));
-	setpoint.mode.x = modeVelocity;
-	setpoint.mode.y = modeVelocity;
-	setpoint.mode.z = modeAbs;
-	setpoint.mode.yaw = modeVelocity;
+/* ----------------------------------------------------------------------- */ 
+/* ------------------------------ FUNCTIONS ------------------------------ */ 
+/* ----------------------------------------------------------------------- */ 
 
-	setpoint.velocity.x	= x_vel;
-	setpoint.velocity.y	= 0.0f;
-	setpoint.position.z = z;
-	setpoint.attitudeRate.yaw = yaw_rate;
-	setpoint.velocity_body = true;
+/* --------------- Setpoint Utils --------------- */ 
+
+setpoint_t fly_setpoint;
+setpoint_t create_velocity_setpoint(float x_vel, float y_vel, float z_pos, float yaw_rate)
+{    
+	setpoint_t setpoint;
+    memset(&setpoint, 0, sizeof(setpoint_t));
+    setpoint.mode.x 	= modeVelocity;
+    setpoint.mode.y 	= modeVelocity;
+    setpoint.mode.z 	= modeAbs;
+    setpoint.mode.yaw 	= modeVelocity;
+    setpoint.velocity.x 	= x_vel;
+    setpoint.velocity.y 	= y_vel;
+    setpoint.position.z 	= z_pos;
+    setpoint.attitude.yaw 	= yaw_rate;
+    setpoint.velocity_body 	= true;
+	return setpoint;
+}
+
+void headToVelocity(float x_vel, float y_vel, float z_pos, float yaw_rate)
+{
+    fly_setpoint = create_velocity_setpoint(x_vel, y_vel, z_pos, yaw_rate);
+    commanderSetSetpoint(&fly_setpoint, 3);
+}
+
+setpoint_t create_position_setpoint(float x, float y, float z, float yaw)
+{    
+	setpoint_t setpoint;
+	memset(&setpoint, 0, sizeof(setpoint_t));
+	setpoint.mode.x 	= modeAbs;
+	setpoint.mode.y 	= modeAbs;
+	setpoint.mode.z 	= modeAbs;
+	setpoint.mode.yaw 	= modeAbs;
+	setpoint.position.x 	= x;
+	setpoint.position.y 	= y;
+	setpoint.position.z 	= z;
+	setpoint.attitude.yaw 	= yaw;
 	return setpoint;
 }
 
 void headToPosition(float x, float y, float z, float yaw)
 {
-	setpoint_t setpoint;
-	memset(&setpoint, 0, sizeof(setpoint_t));
-
-	setpoint.mode.x = modeAbs;
-	setpoint.mode.y = modeAbs;
-	setpoint.mode.z = modeAbs;
-	setpoint.mode.yaw = modeAbs;
-
-	setpoint.position.x = x;
-	setpoint.position.y = y;
-	setpoint.position.z = z;
-	setpoint.attitude.yaw = yaw;
-	commanderSetSetpoint(&setpoint, 3);
+    fly_setpoint = create_position_setpoint(x, y, z, yaw);
+	commanderSetSetpoint(&fly_setpoint, 3);
 }
 
-// TAKEOFF and LANDING FUNCTIONS
+
+/* --------------- Takeoff and Landing --------------- */ 
+
 void takeoff(float height)
 {
 	point_t pos;
@@ -220,6 +253,7 @@ void appMain()
 		//land
 		if (fly==0 && landed==0) 
 		{
+			DEBUG_PRINT("Landing\n");			
 			land();
 			landed=1;
 		}	
@@ -228,6 +262,7 @@ void appMain()
 		//start flying again
 		if (fly==1 && landed==1) 
 		{
+			DEBUG_PRINT("Taking off\n");			
 			estimatorKalmanInit();  
 			takeoff(flying_height);				
 			landed=0;
@@ -238,8 +273,7 @@ void appMain()
 		if (fly==1){ 
 			if (debug==1) DEBUG_PRINT("flying\n");			
 			// Give setpoint to the controller
-			setp_dronet = create_setpoint(forward_vel, flying_height, 0.0);
-			commanderSetSetpoint(&setp_dronet, 3);
+			headToVelocity(forward_vel, 0.0, flying_height, 0.0);
 		}
 
 
@@ -248,10 +282,10 @@ void appMain()
 		}
 
 
-		if (fly==1 && spin==1){
+		if (fly==1 && spin_drone==1){
     		DEBUG_PRINT("\n\nSPIN IN PLACE!\n");
 			spin_in_place(spin_angle, spin_time);
-			spin=0;
+			spin_drone=0;
 		}
 
 	}
@@ -272,7 +306,7 @@ PARAM_GROUP_STOP(DRONET_PARAM)
 PARAM_GROUP_START(FUNCTIONALITIES)
 	PARAM_ADD(PARAM_UINT8, debug, &debug) // debug prints
 	PARAM_ADD(PARAM_UINT8, circle, &circle) // debug prints
-	PARAM_ADD(PARAM_UINT8, spin, &spin) // debug prints
+	PARAM_ADD(PARAM_UINT8, spin_dron, &spin_drone) // debug prints
 PARAM_GROUP_STOP(DRONET_SETTINGS)
 
 // Filters' parameters
