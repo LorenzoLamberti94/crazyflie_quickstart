@@ -17,8 +17,8 @@
                                                                                
  File:    app_main.c                                                              
  Author:  Lorenzo Lamberti      <lorenzo.lamberti@unibo.it>                           
- Author:  Vlad Niculescu      	<vladn@iis.ee.ethz.ch>                           
- Date:    18.02.2022                                                           
+ 		  Vlad Niculescu      	<vladn@iis.ee.ethz.ch>                           
+ Date:    20.09.2022                                                           
 -------------------------------------------------------------------------------*/
 
 // TODO:
