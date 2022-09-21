@@ -10,10 +10,17 @@ Basic functionalities implemented:
 ### Flashing:
 change inside the makefile the CRAZYFLIE_BASE path to your local crazyflie-firmware/ location.
 
-To flash your code on the cf: 
-```
+To flash your code on the cf (broadcast mode): 
+``` 
 make clean all
 make cload 
+```
+
+
+Point-to-point flashing: 
+```
+make clean all
+CLOAD_ARGS="-w radio://0/80/2M/E7E7E7E7E7" make cload
 ```
 
 ### Start Mission
