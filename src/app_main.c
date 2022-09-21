@@ -1,5 +1,5 @@
 /*-----------------------------------------------------------------------------
- Copyright (C) 2021-2022 University of Bologna, Italy, ETH Zurich, Switzerland. 
+ Copyright (C) 2022-2023 University of Bologna, Italy, ETH Zurich, Switzerland. 
  All rights reserved.                                                           
                                                                                
  Licensed under the Apache License, Version 2.0 (the "License");               
@@ -43,6 +43,8 @@
 #include "param.h"
 // my headers
 #include "config_main.h"
+#include "app_main.h"
+
 
 /* --------------- DEFINES --------------- */
 #define PI 3.1415926f
@@ -50,10 +52,10 @@
 
 /* --------------- GUI PARAMETERS --------------- */
 
-// ---- My parameters for enabling/disabling some parts of code. 
-// 		1=Active, 0=Non active
-
+// -- My parameters for enabling/disabling some parts of code. 
+// 	  1=Active, 0=Non active
 uint8_t fly = 0; 		// Takeoff/landing command (GUI parameter)
+uint8_t debug = 1; 		// activate debug prints
 
 // Global variables for the parameters
 float forward_vel 	= FORWARD_VELOCITY;
@@ -68,13 +70,8 @@ float max_rand_angle 	= RANDOM_SPIN_ANGLE; 	// deg
 uint8_t circle = 0; 	
 uint8_t spin_drone = 0; 	
 
-// debug
-uint8_t debug = 1; 		// activate debug prints
-
-
 /* --------------- GLOBAL VARIABLES --------------- */
-
-// ---- Flags
+// -- Flags
 uint8_t landed = 0; 	// Flag for indicating whether the drone landed
 
 /* --------------- FUNCTION DEFINITION --------------- */ 
@@ -141,6 +138,9 @@ void headToPosition(float x, float y, float z, float yaw)
 
 void takeoff(float height)
 {
+	// init Kalman estimator before taking off
+	estimatorKalmanInit();  
+
 	point_t pos;
 	memset(&pos, 0, sizeof(pos));
 	estimatorKalmanGetEstimatedPos(&pos);
@@ -177,13 +177,37 @@ void land(void)
 	vTaskDelay(200);
 }
 
-// float low_pass_filtering(float data_new, float data_old, float alpha)
-// {
-// 	float output;
-// 	// Low pass filter the forward velocity
-// 	output = (1.0f - alpha) * data_new + alpha * data_old;
-// 	return output;
-// }
+/* --------------- Filtering-processing --------------- */ 
+
+float low_pass_filtering(float data_new, float data_old, float alpha)
+{
+	float output;
+	// Low pass filter the forward velocity
+	output = (1.0f - alpha) * data_new + alpha * data_old;
+	return output;
+}
+
+double sigmoid(float x)
+{
+     float result;
+     result = 1 / (1 + expf(-x));
+     return result;
+}
+
+void softmax(float* array, uint8_t softmax_range){
+	int idx_max;
+	idx_max = find_max_index(array, softmax_range);
+
+	for(int i=0; i<softmax_range; i++){
+		if (idx_max == i){
+			array[i] = 1.0;
+		}
+		else{
+			array[i] = 0.0;
+		}
+	}
+}
+/* --------------- Other Manouvers --------------- */ 
 
 void flyCircle(float radius, float velocity){
     
@@ -231,13 +255,38 @@ void spin_in_place(float angle, float time){
     }
 }
 
+/* ------------------------------------------------------------------------- */ 
+/* ------------------------------ Flight Loop ------------------------------ */ 
+/* ------------------------------------------------------------------------- */ 
+void flight_loop(){
+
+	if (circle==1){
+		DEBUG_PRINT("Cicle!\n");
+		flyCircle(0.5, 0.5);	
+	}
+
+	if (spin_drone==1){
+		DEBUG_PRINT("SPIN IN PLACE!\n");
+		spin_in_place(spin_angle, spin_time);
+		spin_drone=0;
+	}
+
+	// Give setpoint to the controller
+	headToVelocity(forward_vel, 0.0, flying_height, 0.0);
+		
+}
+
+/* ------------------------------------------------------------------------ */ 
+/* ------------------------------    Main    ------------------------------ */ 
+/* ------------------------------------------------------------------------ */ 
+
 void appMain()
 {
 	DEBUG_PRINT("Dronet v2 started! \n");
 	systemWaitStart();
 	vTaskDelay(1000);
 
-	/* ------------------------ Flight Loop ------------------------ */
+	/* ------------------------ Main loop ------------------------ */
 
 	while(1) {
 		vTaskDelay(10);
@@ -245,69 +294,59 @@ void appMain()
 		// landed, waiting to start
 		if (fly==0 && landed==1) 
 		{
-			DEBUG_PRINT("Waiting start \n");			
-			vTaskDelay(100);
+			if (debug==1) DEBUG_PRINT("Waiting start \n");			
+			vTaskDelay(M2T(1));
 		}	
 
-
-		//land
+		// land
 		if (fly==0 && landed==0) 
 		{
-			DEBUG_PRINT("Landing\n");			
+			if (debug==1) DEBUG_PRINT("Landing\n");			
 			land();
 			landed=1;
 		}	
 
-
-		//start flying again
+		// take-off
 		if (fly==1 && landed==1) 
 		{
-			DEBUG_PRINT("Taking off\n");			
-			estimatorKalmanInit();  
+			if (debug==1) DEBUG_PRINT("Taking off\n");			
 			takeoff(flying_height);				
 			landed=0;
 		}
 
-
 		// flight loop
 		if (fly==1){ 
 			if (debug==1) DEBUG_PRINT("flying\n");			
-			// Give setpoint to the controller
-			headToVelocity(forward_vel, 0.0, flying_height, 0.0);
+			flight_loop();
 		}
-
-
-		if (fly==1 && circle==1){
-			flyCircle(0.5, 0.5);	
-		}
-
-
-		if (fly==1 && spin_drone==1){
-    		DEBUG_PRINT("\n\nSPIN IN PLACE!\n");
-			spin_in_place(spin_angle, spin_time);
-			spin_drone=0;
-		}
-
 	}
 }
 
 
+/* -------------------------------------------------------------------------------- */ 
+/* ------------------------------ Logging/Parameters ------------------------------ */ 
+/* -------------------------------------------------------------------------------- */ 
 /* --- TIP for Logging or parameters --- */
 // The variable name: PARAM_ADD(TYPE, NAME, ADDRESS)
 // both for logging (LOG_GROUP_START) or for parameters (PARAM_GROUP_START) 
 // should never exceed 9 CHARACTERS, otherwise the firmware won't start correctly
 
-/* --- PARAMETERS --- */ 
+/* --------------- LOGGING --------------- */ 
+LOG_GROUP_START(DRONET_LOG)
+	LOG_ADD(LOG_FLOAT, fwd_vel, &forward_vel)  	// forward velocity
+LOG_GROUP_STOP(DRONET_LOG)
+
+/* --------------- PARAMETERS --------------- */ 
 PARAM_GROUP_START(START_STOP)
 	PARAM_ADD(PARAM_UINT8, fly, &fly)
-PARAM_GROUP_STOP(DRONET_PARAM)
+PARAM_GROUP_STOP(START_STOP)
 
 // Activate - deactivate functionalities: 0=Non-active, 1=active
 PARAM_GROUP_START(FUNCTIONALITIES)
-	PARAM_ADD(PARAM_UINT8, debug, &debug) // debug prints
-	PARAM_ADD(PARAM_UINT8, circle, &circle) // debug prints
-	PARAM_ADD(PARAM_UINT8, spin_dron, &spin_drone) // debug prints
-PARAM_GROUP_STOP(DRONET_SETTINGS)
+	PARAM_ADD(PARAM_UINT8, debug, &debug) 			// debug prints
+	PARAM_ADD(PARAM_UINT8, circle, &circle) 		// fly in circle
+	PARAM_ADD(PARAM_UINT8, spin_dron, &spin_drone) 	// spin in place
+PARAM_GROUP_STOP(FUNCTIONALITIES)
 
 // Filters' parameters
 PARAM_GROUP_START(DRONET_PARAMS)

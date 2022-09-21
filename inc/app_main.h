@@ -21,13 +21,3 @@
 -------------------------------------------------------------------------------*/
 
 
-// Flight
-#define FORWARD_VELOCITY      0.0f      // Max forward speed [m/s].  Default: 1.0f
-#define TARGET_H		          0.50f     // Target height for drone's flight [m].  Default: 0.5f
-
-
-// Manuevers' Parameters
-#define FINAL_LANDING_HEIGHT  0.07f     // [m] --> the drone drops at 0.07m of height
-#define SPIN_TIME             1500.0    // [ms]
-#define SPIN_ANGLE 	          180.0     // [deg]
-#define RANDOM_SPIN_ANGLE     30.0      // [deg] add randomness to SPIN_ANGLE +/- RANDOM_SPIN_ANGLE
