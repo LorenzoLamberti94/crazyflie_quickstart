@@ -55,20 +55,23 @@
 // -- My parameters for enabling/disabling some parts of code. 
 // 	  1=Active, 0=Non active
 uint8_t fly = 0; 		// Takeoff/landing command (GUI parameter)
-uint8_t debug = 1; 		// activate debug prints
+uint8_t debug = 0; 		// activate debug prints
 
 // Global variables for the parameters
 float forward_vel 	= FORWARD_VELOCITY;
 float flying_height = TARGET_H;
 
 // Manouver: Spin -- parameters
-float spin_time 		= SPIN_TIME; 			// ms
-float spin_angle 		= SPIN_ANGLE; 			// deg
-float max_rand_angle 	= RANDOM_SPIN_ANGLE; 	// deg
+float spin_time 		= SPIN_TIME; 			// [ms]
+float spin_yawrate 		= SPIN_YAW_RATE; 		// [deg/s]
+float spin_angle 		= SPIN_ANGLE; 			// [deg]
+float max_rand_angle 	= RANDOM_SPIN_ANGLE; 	// [deg]
 
 // Demo: Manouvers -- 1=Active, 0=Non active
 uint8_t circle = 0; 	
 uint8_t spin_drone = 0; 	
+uint8_t spin_drone_yr = 0; 	
+uint8_t spin_drone_random = 0; 	
 
 /* --------------- GLOBAL VARIABLES --------------- */
 // -- Flags
@@ -187,6 +190,20 @@ float low_pass_filtering(float data_new, float data_old, float alpha)
 	return output;
 }
 
+int find_max_index(float* array, int size)
+{
+	int index = 0;
+	float max = array[index];
+
+	for (int i = 0; i < size; ++i){
+		if (array[i] > max){
+			max = (float) array[i];
+			index = i;
+		}
+	}	
+	return index;
+}
+
 double sigmoid(float x)
 {
      float result;
@@ -227,16 +244,16 @@ void flyCircle(float radius, float velocity){
     }
 }
 
-void spin_in_place(float angle, float time){
+void spin_in_place_t_cost(float angle, float time){
 	/*
 	angle [deg]: given the current orientation, spin by "angle" degrees in place;
 	time   [ms]: how much time to perform the entire manuever --> impacts the spinning speed;
 	*/
 
     float current_yaw;					// fetch current yaw self estimation
-    float steptime = 10; 				//ms
-    float t_steps = (time/steptime); 	// angle steps
-    float r_steps = (angle/t_steps); 	// time steps
+    float t_steps = 1; 					// [ms] time steps
+    float n_steps = (time/(t_steps)); 	// number of  steps
+    float r_steps = (angle/n_steps); 	// angle steps
 	float new_yaw;						// new yaw given to the controller. This parameter is updated by the for loop
 
 	// access self estimation
@@ -244,15 +261,62 @@ void spin_in_place(float angle, float time){
 	memset(&pos, 0, sizeof(pos));
 	estimatorKalmanGetEstimatedPos(&pos);
 	current_yaw = logGetFloat(logGetVarId("stateEstimate", "yaw"));
-    DEBUG_PRINT("%f\n",(double)current_yaw);
+    // DEBUG_PRINT("\n\n[spin_in_place_t_cost] current_yaw %f\n",(double)current_yaw);
+	DEBUG_PRINT("\n\n[spin_in_place_t_cost]\n current_yaw %f, t_steps %f, n_steps %f, r_steps %f\n\n", current_yaw, t_steps, n_steps, r_steps);
 
 	// perform manuever
-    for (int i = 0; i <= t_steps; i++) {
+    for (int i = 0; i <= n_steps; i++) {
         new_yaw = (i*r_steps) + current_yaw;
     	DEBUG_PRINT("%f\n",(double)new_yaw);
 		headToPosition(pos.x, pos.y, pos.z, new_yaw);
-		vTaskDelay(M2T(steptime));
+		vTaskDelay(M2T(t_steps));
     }
+}
+
+void spin_in_place_yawrate_cost(float angle, float yaw_rate){
+	/*
+	angle 	 [deg]  : given the current orientation, spin by "angle" degrees in place;
+	yaw_rate [deg/s]: constant yaw rate for rotation --> impacts the spinning time;
+	*/
+	float time = abs((angle/yaw_rate) * 1000); // [ms]
+	DEBUG_PRINT("\n\n [spin_in_place_yawrate_cost]\n angle %f, yaw_rate %f, time %f\n\n", angle, yaw_rate, time);
+    spin_in_place_t_cost(angle, time);
+}
+
+
+void spin_in_place_random(float starting_random_angle, float yaw_rate, float rand_range){
+	/**
+	 * spin to a random angle. The random angle is chosen between starting_random_angle +/- rand_range
+	 */
+	float random_angle = starting_random_angle - rand_range + (2*rand_range) * (float)rand()/(float)(RAND_MAX);
+	if (random_angle > 180){
+		random_angle = -(2*180 - random_angle);
+	}	
+	DEBUG_PRINT("\n\n [spin_in_place_random]:\n starting_random_angle %f, yaw_rate %f, rand_range %f, random_angle %f", starting_random_angle, yaw_rate, rand_range, random_angle);
+	spin_in_place_yawrate_cost(random_angle, yaw_rate);
+
+}
+
+
+void check_decks_properly_mounted(uint8_t stop_on_error){
+	// Getting Param IDs of the deck driver initialization
+	paramVarId_t idPositioningDeck = paramGetVarId("deck", "bcFlow2");
+	paramVarId_t idMultiranger = paramGetVarId("deck", "bcMultiranger");
+    // Check if decks are properly mounted
+    uint8_t positioningInit = paramGetUint(idPositioningDeck);
+    uint8_t multirangerInit = paramGetUint(idMultiranger);
+	
+	if (!multirangerInit || !positioningInit){
+		DEBUG_PRINT("Decks with value 0 are not mounted correctly:\n Flow %d, Multiranger %d\n");
+	}
+
+	if (stop_on_error){
+		if (!multirangerInit || !positioningInit){
+			while(1){
+				vTaskDelay(M2T(10));
+			}
+		}
+	}
 }
 
 /* ------------------------------------------------------------------------- */ 
@@ -266,10 +330,22 @@ void flight_loop(){
 	}
 
 	if (spin_drone==1){
-		DEBUG_PRINT("SPIN IN PLACE!\n");
-		spin_in_place(spin_angle, spin_time);
+		DEBUG_PRINT("SPIN IN PLACE (t constant)!\n");
+		spin_in_place_t_cost(spin_angle, spin_time);
 		spin_drone=0;
 	}
+
+	if (spin_drone_yr==1){
+		DEBUG_PRINT("SPIN IN PLACE (yaw rate constant)!\n");
+		spin_in_place_yawrate_cost(spin_angle, spin_yawrate);
+		spin_drone_yr=0;
+	}
+
+	if (spin_drone_random==1){
+		DEBUG_PRINT("SPIN IN PLACE (random)!\n");
+		spin_in_place_random(spin_angle, spin_yawrate, max_rand_angle);
+		spin_drone_random=0;
+	}	
 
 	// Give setpoint to the controller
 	headToVelocity(forward_vel, 0.0, flying_height, 0.0);
@@ -285,6 +361,10 @@ void appMain()
 	DEBUG_PRINT("Dronet v2 started! \n");
 	systemWaitStart();
 	vTaskDelay(1000);
+	// init Kalman estimator 
+	estimatorKalmanInit(); 
+	// check decks are ok: flow and multiranger
+	check_decks_properly_mounted((uint8_t) 0);
 
 	/* ------------------------ Main loop ------------------------ */
 
@@ -295,7 +375,7 @@ void appMain()
 		if (fly==0 && landed==1) 
 		{
 			if (debug==1) DEBUG_PRINT("Waiting start \n");			
-			vTaskDelay(M2T(1));
+			vTaskDelay(M2T(100));
 		}	
 
 		// land
@@ -341,20 +421,27 @@ PARAM_GROUP_START(START_STOP)
 	PARAM_ADD(PARAM_UINT8, fly, &fly)
 PARAM_GROUP_STOP(START_STOP)
 
+PARAM_GROUP_START(DEBUG)
+	PARAM_ADD(PARAM_UINT8, debug,  &debug) 	// debug prints
+PARAM_GROUP_STOP(DEBUG)
+
 // Activate - deactivate functionalities: 0=Non-active, 1=active
-PARAM_GROUP_START(FUNCTIONALITIES)
-	PARAM_ADD(PARAM_UINT8, debug, &debug) 			// debug prints
-	PARAM_ADD(PARAM_UINT8, circle, &circle) 		// fly in circle
-	PARAM_ADD(PARAM_UINT8, spin_dron, &spin_drone) 	// spin in place
-PARAM_GROUP_STOP(FUNCTIONALITIES)
+PARAM_GROUP_START(MANOUVERS)
+	PARAM_ADD(PARAM_UINT8, circle, &circle) 				// fly in circle
+	PARAM_ADD(PARAM_UINT8, spin_t_c, &spin_drone) 			// spin in place with a fixed time
+	PARAM_ADD(PARAM_UINT8, spin_yr_c, &spin_drone_yr) 		// spin in place with a fixed yaw rate
+	PARAM_ADD(PARAM_UINT8, spin_rand, &spin_drone_random) 	// spin in place randomly
+PARAM_GROUP_STOP(MANOUVERS)
 
 // Filters' parameters
-PARAM_GROUP_START(DRONET_PARAMS)
+PARAM_GROUP_START(PARAMETERS)
 	PARAM_ADD(PARAM_FLOAT, velocity, &forward_vel)
 	PARAM_ADD(PARAM_FLOAT, height, &flying_height)
-	PARAM_ADD(PARAM_FLOAT, t_spin, &spin_time)
 	PARAM_ADD(PARAM_FLOAT, spin_ang, &spin_angle)
-PARAM_GROUP_STOP(DRONET_SETTINGS)
+	PARAM_ADD(PARAM_FLOAT, spin_time, &spin_time)
+	PARAM_ADD(PARAM_FLOAT, spin_yawr, &spin_yawrate)
+	PARAM_ADD(PARAM_FLOAT, rnd_angle, &max_rand_angle)
+PARAM_GROUP_STOP(PARAMETERS)
 
 
 
