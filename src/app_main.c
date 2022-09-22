@@ -228,7 +228,7 @@ void softmax(float* array, uint8_t softmax_range){
 
 void flyCircle(float radius, float velocity){
     
-	float distance = 2.0f*PI*radius;
+	fcloadloat distance = 2.0f*PI*radius;
     uint16_t steps = distance/velocity*1000/100; //one step is 100ms
 
 	point_t pos;
@@ -261,12 +261,12 @@ void spin_in_place_t_cost(float angle, float time){
 	memset(&pos, 0, sizeof(pos));
 	estimatorKalmanGetEstimatedPos(&pos);
 	current_yaw = logGetFloat(logGetVarId("stateEstimate", "yaw"));
-	if debug==2 DEBUG_PRINT("\n\n[spin_in_place_t_cost]\n current_yaw %f, t_steps %f, n_steps %f, r_steps %f\n\n", current_yaw, t_steps, n_steps, r_steps);
+	if (debug==2) DEBUG_PRINT("\n\n[spin_in_place_t_cost]\n current_yaw %f, t_steps %f, n_steps %f, r_steps %f\n\n", current_yaw, t_steps, n_steps, r_steps);
 
 	// perform manuever
     for (int i = 0; i <= n_steps; i++) {
         new_yaw = (i*r_steps) + current_yaw;
-    	if debug==3 DEBUG_PRINT("%f\n",(double)new_yaw);
+    	if (debug==3) DEBUG_PRINT("%f\n",(double)new_yaw);
 		headToPosition(pos.x, pos.y, pos.z, new_yaw);
 		vTaskDelay(M2T(t_steps));
     }
@@ -278,7 +278,7 @@ void spin_in_place_yawrate_cost(float angle, float yaw_rate){
 	yaw_rate [deg/s]: constant yaw rate for rotation --> impacts the spinning time;
 	*/
 	float time = abs((angle/yaw_rate) * 1000); // [ms]
-	if debug==2 DEBUG_PRINT("\n\n [spin_in_place_yawrate_cost]\n angle %f, yaw_rate %f, time %f\n\n", angle, yaw_rate, time);
+	if (debug==2) DEBUG_PRINT("\n\n [spin_in_place_yawrate_cost]\n angle %f, yaw_rate %f, time %f\n\n", angle, yaw_rate, time);
     spin_in_place_t_cost(angle, time);
 }
 
@@ -293,7 +293,7 @@ void spin_in_place_random(float starting_random_angle, float yaw_rate, float ran
 	if (random_angle > 180){
 		random_angle = -(360 - random_angle);
 	}	
-	if debug==2 DEBUG_PRINT("\n\n [spin_in_place_random]:\n starting_random_angle %f, yaw_rate %f, rand_range %f, random_angle %f", starting_random_angle, yaw_rate, rand_range, random_angle);
+	if (debug==2) DEBUG_PRINT("\n\n [spin_in_place_random]:\n starting_random_angle %f, yaw_rate %f, rand_range %f, random_angle %f", starting_random_angle, yaw_rate, rand_range, random_angle);
 	spin_in_place_yawrate_cost(random_angle, yaw_rate);
 
 }
@@ -308,7 +308,7 @@ void check_decks_properly_mounted(uint8_t stop_on_error){
     uint8_t multirangerInit = paramGetUint(idMultiranger);
 	
 	if (!multirangerInit || !positioningInit){
-		if debug==1 DEBUG_PRINT("Decks with value 0 are not mounted correctly:\n Flow %d, Multiranger %d\n");
+		if (debug==1) DEBUG_PRINT("Decks with value 0 are not mounted correctly:\n Flow %d, Multiranger %d\n");
 	}
 
 	if (stop_on_error){
@@ -326,24 +326,24 @@ void check_decks_properly_mounted(uint8_t stop_on_error){
 void flight_loop(){
 
 	if (circle==1){
-		if debug==1 DEBUG_PRINT("Cicle!\n");
+		if (debug==1) DEBUG_PRINT("Cicle!\n");
 		flyCircle(0.5, 0.5);	
 	}
 
 	if (spin_drone==1){
-		if debug==1 DEBUG_PRINT("SPIN IN PLACE (t constant)!\n");
+		if (debug==1) DEBUG_PRINT("SPIN IN PLACE (t constant)!\n");
 		spin_in_place_t_cost(spin_angle, spin_time);
 		spin_drone=0;
 	}
 
 	if (spin_drone_yr==1){
-		if debug==1 DEBUG_PRINT("SPIN IN PLACE (yaw rate constant)!\n");
+		if (debug==1) DEBUG_PRINT("SPIN IN PLACE (yaw rate constant)!\n");
 		spin_in_place_yawrate_cost(spin_angle, spin_yawrate);
 		spin_drone_yr=0;
 	}
 
 	if (spin_drone_random==1){
-		if debug==1 DEBUG_PRINT("SPIN IN PLACE (random)!\n");
+		if (debug==1) DEBUG_PRINT("SPIN IN PLACE (random)!\n");
 		spin_in_place_random(spin_angle, spin_yawrate, max_rand_angle);
 		spin_drone_random=0;
 	}	
@@ -359,7 +359,7 @@ void flight_loop(){
 
 void appMain()
 {
-	if debug==1 DEBUG_PRINT("Dronet v2 started! \n");
+	if (debug==1) DEBUG_PRINT("Dronet v2 started! \n");
 	systemWaitStart();
 	vTaskDelay(1000);
 	// init Kalman estimator 
