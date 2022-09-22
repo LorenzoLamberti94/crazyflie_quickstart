@@ -23,6 +23,14 @@ make clean all
 CLOAD_ARGS="-w radio://0/80/2M/E7E7E7E7E7" make cload
 ```
 
+Other flashing utils:
+```
+be fast !
+make -j 8 clean all 
+make -j 8 clean all && make cload
+```
+
+
 ### Start Mission
 open the CF client
 ```
