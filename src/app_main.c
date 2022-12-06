@@ -75,7 +75,7 @@ uint8_t spin_drone_random = 0;
 
 /* --------------   GLOBAL VARIABLES   -------------- */
 // -- Flags
-uint8_t landed = 0; 	// Flag for indicating whether the drone landed
+uint8_t landed = 1; 	// Flag for indicating whether the drone landed
 
 /* ---------------    STRUCTURES    --------------- */
 
@@ -311,7 +311,7 @@ void check_decks_properly_mounted(uint8_t stop_on_error){
     uint8_t multirangerInit = paramGetUint(idMultiranger);
 	
 	if (!multirangerInit || !positioningInit){
-		if (debug==1) DEBUG_PRINT("Decks with value 0 are not mounted correctly:\n Flow %d, Multiranger %d\n");
+		if (debug==1) DEBUG_PRINT("Decks with value 0 are not mounted correctly:\n Flow %d, Multiranger %d\n" , positioningInit, multirangerInit );
 	}
 
 	if (stop_on_error){
