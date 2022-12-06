@@ -228,7 +228,7 @@ void softmax(float* array, uint8_t softmax_range){
 
 void flyCircle(float radius, float velocity){
     
-	fcloadloat distance = 2.0f*PI*radius;
+	float distance = 2.0f*PI*radius;
     uint16_t steps = distance/velocity*1000/100; //one step is 100ms
 
 	point_t pos;
