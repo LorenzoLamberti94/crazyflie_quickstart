@@ -16,3 +16,4 @@ SRC_FILES := $(filter-out $(CRAZYFLIE_BASE)/src/deck/drivers/src/multiranger.c, 
 # add folders
 VPATH += ../crazyflie-firmware-modified
 include $(CRAZYFLIE_BASE)/Makefile
+CFLAGS = $(filter-out -Wdouble-promotion -Werror, $(TMPCFLAGS))    # ignore conversion float to double warning

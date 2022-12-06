@@ -73,11 +73,14 @@ uint8_t spin_drone = 0;
 uint8_t spin_drone_yr = 0; 	
 uint8_t spin_drone_random = 0; 	
 
-/* --------------- GLOBAL VARIABLES --------------- */
+/* --------------   GLOBAL VARIABLES   -------------- */
 // -- Flags
 uint8_t landed = 0; 	// Flag for indicating whether the drone landed
 
-/* --------------- FUNCTION DEFINITION --------------- */ 
+/* ---------------    STRUCTURES    --------------- */
+
+
+/* -------------- FUNCTION DEFINITION -------------- */ 
 void land(void);
 void takeoff(float height);
 void headToVelocity(float x_vel, float y_vel, float z_pos, float yaw_rate);
@@ -228,7 +231,7 @@ void softmax(float* array, uint8_t softmax_range){
 
 void flyCircle(float radius, float velocity){
     
-	fcloadloat distance = 2.0f*PI*radius;
+	float distance = 2.0f*PI*radius;
     uint16_t steps = distance/velocity*1000/100; //one step is 100ms
 
 	point_t pos;
