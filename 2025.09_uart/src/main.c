@@ -44,11 +44,18 @@
 // my headers
 #include "config_main.h"
 #include "main.h"
+// uncomment to use DMA for UART communication with AI-deck
+#include "uart_dma_setup.h"
 
+#define BUFFERSIZE 8 // [byte] size of the RX buffer for UART-DMA
+int8_t pulpRxBuffer[BUFFERSIZE];
+uint8_t dma_flag = 0;
+int32_t cnn_data_int[BUFFERSIZE/4];
+float cnn_data_float[BUFFERSIZE/4];
+float nemo_quantum = 0.0006;
 
 /* --------------- DEFINES --------------- */
 #define PI 3.1415926f
-
 
 /* --------------- GUI PARAMETERS --------------- */
 
@@ -356,21 +363,67 @@ void flight_loop(){
 
 }
 
+
+
+// CNN POST-PROCESSING
+
+void process_cnn_output(int32_t* cnn_output_int, float* cnn_output_float)
+{
+    // [0]=steering
+    cnn_output_float[0] = (float) (cnn_output_int[0] * nemo_quantum);
+    // [1]=collision
+    cnn_output_float[1] = (float) (cnn_output_int[1] * nemo_quantum);
+
+    if(cnn_output_float[0] < -1.0f) cnn_output_float[0] = -1.0f;
+    if(cnn_output_float[0] > 1.0f) cnn_output_float[0]  = 1.0f;
+    // if(cnn_output_float[1] < 0.1f) cnn_output_float[1]  = 0.0f;
+}
+
+
+
+
 /* ------------------------------------------------------------------------ */
 /* ------------------------------    Main    ------------------------------ */
 /* ------------------------------------------------------------------------ */
 
 void appMain()
 {
-	if (debug==1) DEBUG_PRINT("Dronet v2 started! \n");
+	DEBUG_PRINT("=========== MAIN START =========== \n");
+	/* ---------------------- Initialization ---------------------- */
 	systemWaitStart();
 	vTaskDelay(1000);
+
 	// init Kalman estimator
 	estimatorKalmanInit();
+
+	// UART-DMA setup for communication with AI-deck
+	USART_DMA_Start(115200, pulpRxBuffer, BUFFERSIZE);
+
 	// check decks are ok: flow and multiranger
-	check_decks_properly_mounted((uint8_t) 0);
+	// check_decks_properly_mounted((uint8_t) 0);
 
 	/* ------------------------ Main loop ------------------------ */
+	int count=0;
+	while (1){
+		vTaskDelay(100);
+		// If new UART data is available
+		if (dma_flag == 1)
+		{
+            dma_flag = 0;  // clear the flag
+            // timeout_counter = 0;
+            cnn_data_int[0] = ((int32_t *)pulpRxBuffer)[0];
+            cnn_data_int[1] = ((int32_t *)pulpRxBuffer)[1];
+
+            DEBUG_PRINT("1.UART data: %08x  %08x \n", (unsigned)((uint32_t *)pulpRxBuffer)[0], (unsigned)((uint32_t *)pulpRxBuffer)[1]);
+            DEBUG_PRINT("UART data (int32): %ld  %ld \n", cnn_data_int[0], cnn_data_int[1]);
+
+			// cnn_data_float[0] = ((float *)pulpRxBuffer)[0];
+            // cnn_data_float[1] = ((float *)pulpRxBuffer)[1];
+			// DEBUG_PRINT("UART data (fp32) : %f  %f \n", cnn_data_float[0], cnn_data_float[1]);
+		}
+
+	}
+
 
 	while(1) {
 		vTaskDelay(10);
@@ -404,6 +457,18 @@ void appMain()
 			flight_loop();
 		}
 	}
+}
+
+
+uint64_t t0, t_frame, t_prev;
+// UART-DMA interrupt - triggered when a new inference result is available
+void __attribute__((used)) DMA1_Stream1_IRQHandler(void)
+{
+    t_prev = t0;
+    t0 = xTaskGetTickCount();
+    t_frame = t0 - t_prev;
+    DMA_ClearFlag(DMA1_Stream1, UART3_RX_DMA_ALL_FLAGS);
+    dma_flag = 1;
 }
 
 

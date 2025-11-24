@@ -1,1 +1,2 @@
 obj-y += main.o
+obj-y += uart_dma_pulp.o
