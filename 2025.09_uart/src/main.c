@@ -379,8 +379,30 @@ void process_cnn_output(int32_t* cnn_output_int, float* cnn_output_float)
     // if(cnn_output_float[1] < 0.1f) cnn_output_float[1]  = 0.0f;
 }
 
+void test_uart(){
 
+	while (1){
+		vTaskDelay(100);
+		// If new UART data is available
+		if (dma_flag == 1)
+		{
+            // timeout_counter = 0; // clear the flag
+            dma_flag = 0;  // clear the flag
 
+			// fetch int32 values
+			cnn_data_int[0] = ((int32_t *)pulpRxBuffer)[0];
+            cnn_data_int[1] = ((int32_t *)pulpRxBuffer)[1];
+            DEBUG_PRINT("1.UART data: %08x  %08x \n", (unsigned)((uint32_t *)pulpRxBuffer)[0], (unsigned)((uint32_t *)pulpRxBuffer)[1]);
+            DEBUG_PRINT("UART data (int32): %ld  %ld \n", cnn_data_int[0], cnn_data_int[1]);
+
+			// fetch float32 values
+			// cnn_data_float[0] = ((float *)pulpRxBuffer)[0];
+            // cnn_data_float[1] = ((float *)pulpRxBuffer)[1];
+			// DEBUG_PRINT("UART data (fp32) : %f  %f \n", cnn_data_float[0], cnn_data_float[1]);
+		}
+
+	}
+}
 
 /* ------------------------------------------------------------------------ */
 /* ------------------------------    Main    ------------------------------ */
@@ -403,27 +425,8 @@ void appMain()
 	// check_decks_properly_mounted((uint8_t) 0);
 
 	/* ------------------------ Main loop ------------------------ */
-	int count=0;
-	while (1){
-		vTaskDelay(100);
-		// If new UART data is available
-		if (dma_flag == 1)
-		{
-            dma_flag = 0;  // clear the flag
-            // timeout_counter = 0;
-            cnn_data_int[0] = ((int32_t *)pulpRxBuffer)[0];
-            cnn_data_int[1] = ((int32_t *)pulpRxBuffer)[1];
 
-            DEBUG_PRINT("1.UART data: %08x  %08x \n", (unsigned)((uint32_t *)pulpRxBuffer)[0], (unsigned)((uint32_t *)pulpRxBuffer)[1]);
-            DEBUG_PRINT("UART data (int32): %ld  %ld \n", cnn_data_int[0], cnn_data_int[1]);
-
-			// cnn_data_float[0] = ((float *)pulpRxBuffer)[0];
-            // cnn_data_float[1] = ((float *)pulpRxBuffer)[1];
-			// DEBUG_PRINT("UART data (fp32) : %f  %f \n", cnn_data_float[0], cnn_data_float[1]);
-		}
-
-	}
-
+	test_uart();
 
 	while(1) {
 		vTaskDelay(10);
