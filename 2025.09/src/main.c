@@ -43,7 +43,7 @@
 #include "param.h"
 // my headers
 #include "config_main.h"
-#include "app_main.h"
+#include "main.h"
 
 
 /* --------------- DEFINES --------------- */

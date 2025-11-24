@@ -1,1 +1,1 @@
-obj-y += hello_world.o
+obj-y += main.o
